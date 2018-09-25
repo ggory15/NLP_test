@@ -71,8 +71,13 @@ int main(int argc, char* argv[])
     myProb.evalNonLinCstr(out, initVec, i);
     myProb.getNonLinCstrUB(out, i);
     myProb.getNonLinCstrLB(out, i);
-
   }
+  double cost;
+  myProb.evalObj(cost, initVec);
+  Eigen::MatrixXd cost_diff(1, 108);
+  cost_diff.setZero();
+  myProb.evalObjDiff(cost_diff, initVec);
+  
     // std::shared_ptr<NLPVariables> vars(new NLPVariables("var_set1", myProb.dimVar()));
   // std::shared_ptr<NLPCosts> costs(new NLPCosts());
 

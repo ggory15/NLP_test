@@ -33,8 +33,8 @@ class BoxesHullTrajProblem
   void getTangentLB(RefVec out) const;
   void getTangentUB(RefVec out) const;
 
-  void evalObj(double& out) const;
-  void evalObjDiff(RefMat out) const;
+  void evalObj(double& out, RefVec in) const;
+  void evalObjDiff(RefMat out, RefVec in) const;
 
   void evalLinCstr(RefVec out, size_t i) const;
   void evalLinCstrDiff(RefMat out, size_t i) const;

@@ -193,26 +193,46 @@ void BoxesHullTrajProblem::getTangentUB(RefVec out) const
   for (int i = 0; i < out.size(); i++) out(i) = infinity;
 }
 
-void BoxesHullTrajProblem::evalObj(double& out) const
+void BoxesHullTrajProblem::evalObj(double& out, RefVec in) const
 {
   out = 0;
   // distance between first mobile box and initial position
-  // Eigen::Vector3d pos = initPos_;
-  // Eigen::Vector3d posNext = phi_x_z()(0)(0)[0];
-  // Eigen::Vector3d dist = posNext - pos;
-  // out += dist[0] * dist[0] + dist[1] * dist[1] + dist[2] * dist[2];
-  // for (size_t i = 0; i < nBoxes_ - 1; ++i)
-  // {
-  //   // distance between successive mobile boxes
-  //   pos = phi_x_z()(0)(i)[0];
-  //   posNext = phi_x_z()(0)(i + 1)[0];
-  //   dist = posNext - pos;
-  //   out += dist[0] * dist[0] + dist[1] * dist[1] + dist[2] * dist[2];
-  // }
-   
-  // TODO:: objective fucntion sum (b_k+1 - b_k)^2
- 
+  Eigen::Vector3d pos = initPos_;
+  Eigen::Vector3d posNext = in.head(3);
+  Eigen::Vector3d dist = posNext - pos;
+  out += dist[0] * dist[0] + dist[1] * dist[1] + dist[2] * dist[2];
+  for (size_t i = 0; i < nBoxes_ - 1; ++i)
+  {
+    // distance between successive mobile boxes
+    pos = in.segment(3*i, 3);
+    posNext = in.segment(3*(i+1), 3);
+    dist = posNext - pos;
+    out += dist[0] * dist[0] + dist[1] * dist[1] + dist[2] * dist[2];
+  } 
+  cout << "cost" << out << endl;
 }
+void BoxesHullTrajProblem::evalObjDiff(RefMat out, RefVec in) const 
+{
+  assert(out.rows() == 1 && "wrong rows size");
+  //assert(out.cols() == M().tangentDim() && "wrong cols size");
+  outRepObjDiff_.setZero();
+
+  Eigen::Vector3d pos = initPos_;
+  Eigen::Vector3d posNext = in.head(3);
+  Eigen::Vector3d dist = posNext - pos;
+  int boxRepDim = 3;
+  outRepObjDiff_.block(0, (0) * boxRepDim, 1, boxRepDim) += 2 * dist.transpose();
+  for (Index i = 0; i < static_cast<Index>(nBoxes_) - 1; ++i)
+  {
+    pos = in.segment(3*i, 3);
+    posNext = in.segment(3*(i+1), 3);
+    dist = posNext - pos;
+    outRepObjDiff_.block(0, i * boxRepDim, 1, boxRepDim) += -2 * dist.transpose();
+    outRepObjDiff_.block(0, (i + 1) * boxRepDim, 1, boxRepDim) += 2 * dist.transpose();
+  }
+  out = outRepObjDiff_;
+}
+
 
 void BoxesHullTrajProblem::evalLinCstr(RefVec, size_t) const {}
 
@@ -287,7 +307,6 @@ void BoxesHullTrajProblem::evalNonLinCstr(RefVec out, RefVec in, size_t i) const
     Eigen::Vector3d normal = in.segment(4*iPlan+37, 3); //phi_x_z()(1)(iPlan)[1];
     out(0) = pow(normal.norm(), 2);
   }
-
 }
 
 void BoxesHullTrajProblem::getNonLinCstrLB(RefVec out, size_t i) const
