@@ -9,6 +9,7 @@
 #include <hpp/foot/solvers/NLP/NLP_formulation.hh>
 #include <hpp/foot/solvers/NLP/NLP_variable.hh>
 #include <hpp/foot/solvers/NLP/NLP_cost.hh>
+#include <hpp/foot/solvers/NLP/NLP_constraint.hh>
 
 #include <ifopt/ipopt_solver.h>
 
@@ -58,29 +59,69 @@ int main(int argc, char* argv[])
               myProb.config()["initialGuessRandomFactor"] *
                   Eigen::VectorXd::Random(myProb.dimVar());
   }
-  Eigen::VectorXd out(8);
-  out.setZero();
-  for (int i=0; i<37; i++){
-    if (i == 12)
-      out.resize(3);
-    else if (i<25 && i>12)
-      out.resize(24);
-    else if (i>=25 && i<37)
-      out.resize(1);
+//   Eigen::VectorXd out(8);
+//   out.setZero();
+//   for (int i=0; i<37; i++){
+//     if (i == 12)
+//       out.resize(3);
+//     else if (i<25 && i>12)
+//       out.resize(24);
+//     else if (i>=25 && i<37)
+//       out.resize(1);
 
-    myProb.evalNonLinCstr(out, initVec, i);
-    myProb.getNonLinCstrUB(out, i);
-    myProb.getNonLinCstrLB(out, i);
-  }
-  double cost;
-  myProb.evalObj(cost, initVec);
-  Eigen::MatrixXd cost_diff(1, 108);
-  cost_diff.setZero();
-  myProb.evalObjDiff(cost_diff, initVec);
+//     myProb.evalNonLinCstr(out, initVec, i);
+//     myProb.getNonLinCstrUB(out, i);
+//     myProb.getNonLinCstrLB(out, i);
+//   }
+//   double cost;
+//  // myProb.evalObj(cost, initVec);
+//   Eigen::MatrixXd cost_diff(1, 108);
+//   cost_diff.setZero();
+//   myProb.evalObjDiff(cost_diff, initVec);
+
+
+
+
+  std::shared_ptr<NLPVariables> vars(new NLPVariables("var_set1", myProb.dimVar()));
+  vars->SetInitVariable(initVec);
+  VecBound vars_bound(myProb.dimVar());
+  for (int i=0; i< myProb.dimVar(); i++)
+    vars_bound.at(i) = NoBound;//(-1.0, 1.0);;  
+  vars->SetBounds(vars_bound);
   
-    // std::shared_ptr<NLPVariables> vars(new NLPVariables("var_set1", myProb.dimVar()));
-  // std::shared_ptr<NLPCosts> costs(new NLPCosts());
+  std::shared_ptr<NLPCosts> costs(new NLPCosts(&myProb));
+  costs->SetStepSize(nBoxes);
+  
+  using ContraintPtrVec  = std::vector<ifopt::ConstraintSet::Ptr>;
+  ContraintPtrVec ConstraintsGroup;
+  for (int i=1; i<37; i++)
+    ConstraintsGroup.push_back(make_shared<NLPConstraints>(&myProb, i, "constset1"));
+  
+  
+  ifopt::Problem nlp;
 
+  nlp.AddVariableSet(vars);
+  nlp.AddCostSet(costs);
+  //nlp.AddConstraintSet(std::make_shared<ExConstraint>());
+  for (auto c: ConstraintsGroup)
+     nlp.AddConstraintSet(c);
+  //nlp.AddConstraintSet(constraints);
+  //nlp.AddConstraintSet(constraints2);
+
+  auto solver = std::make_shared<ifopt::IpoptSolver>();
+  solver->SetOption("tol", 0.0000001);
+  //solver->SetOption("jacobian_approximation", "finite-difference-values");
+  solver->SetOption("linear_solver", "ma27");
+  solver->SetOption("jacobian_approximation", "exact");
+  solver->SetOption("max_iter", 30000);
+  solver->Solve(nlp);
+  Eigen::VectorXd x = nlp.GetOptVariables()->GetValues();
+  std::cout << "sol" << x.head(36).transpose() << std::endl;  
+  myProb.logAllX("/home/skim/foot_data/", x);
+  //std::cout << "ini" << initVec.head(36).transpose() << std::endl;
+//  std::cout << "init_step" << myProb.initPos().transpose() << std:: endl;
+
+//   ifopt::Problem nlp;
   // vars->SetInitVariable(initVec);
   // VecBound vars_bound(myProb.dimVar());
   // for (int i=0; i< myProb.dimVar(); i++)

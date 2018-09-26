@@ -20,6 +20,7 @@ SET(${LIBRARY_NAME}_SOURCES
   solvers/NLP/NLP_formulation.cc
   solvers/NLP/NLP_variable.cc
   solvers/NLP/NLP_cost.cc
+  solvers/NLP/NLP_constraint.cc
 
   TrajectoryProblem.cc
   BoxesHullTrajProblem.cc

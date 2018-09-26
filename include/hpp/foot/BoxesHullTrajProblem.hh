@@ -33,7 +33,8 @@ class BoxesHullTrajProblem
   void getTangentLB(RefVec out) const;
   void getTangentUB(RefVec out) const;
 
-  void evalObj(double& out, RefVec in) const;
+  //void evalObj(double& out, RefVec in) const;
+  double evalObj(RefVec in);
   void evalObjDiff(RefMat out, RefVec in) const;
 
   void evalLinCstr(RefVec out, size_t i) const;
@@ -42,7 +43,7 @@ class BoxesHullTrajProblem
   void getLinCstrUB(RefVec out, size_t i) const;
 
   void evalNonLinCstr(RefVec out, RefVec in, size_t i) const;
-  void evalNonLinCstrDiff(RefMat out, size_t i) const;
+  void evalNonLinCstrDiff(Eigen::SparseMatrix<double>& out, RefVec in, size_t i) const;
   void getNonLinCstrLB(RefVec out, size_t i) const;
   void getNonLinCstrUB(RefVec out, size_t i) const;
 
@@ -71,8 +72,11 @@ class BoxesHullTrajProblem
   const double& securityDistance() const { return securityDistance_; }
   Index dimVar() const { return manifold_size; }
   const ProblemConfig& config() const { return config_; }
+  const double& getCost() const {return cost_;}
+  const Eigen::MatrixXd& getCostDiff() const {return costDiff_;}
 
   Eigen::Vector3d getBoxPositionFromX(size_t i, const Eigen::VectorXd& x) const;
+  void logAllX(const std::string& fileName, RefVec res) const;
 
  private:
   ProblemConfig config_;
@@ -110,6 +114,8 @@ class BoxesHullTrajProblem
   std::vector<BoxAbovePlan> obstacleAbovePlanFcts_;
   std::vector<std::string> cstrNames_;
 
+  double cost_;
+  Eigen::MatrixXd costDiff_;
 
   // buffers
   mutable Eigen::MatrixXd outRepObjDiff_;

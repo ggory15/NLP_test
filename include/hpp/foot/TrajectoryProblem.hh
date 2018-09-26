@@ -54,6 +54,8 @@ class TrajectoryProblem
   const double& securityDistance() const { return securityDistance_; }
   const CostDistance& costFct() const { return costFct_; }
   bool hasVirtualObstacles() const { return hasVirtualObstacles_; }
+  
+
   Eigen::VectorXd findInitPoint() const;
 
   const Box& getBox(Index i) const
@@ -139,6 +141,7 @@ class TrajectoryProblem
   std::vector<BoxAbovePlan> obstacleAbovePlanFcts_;
   std::vector<FixedBoxPosition> fixedBoxPositionFcts_;
   std::vector<std::string> cstrNames_;
+
 };
 
 /// \brief Output stream operator for frames.

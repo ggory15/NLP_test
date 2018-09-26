@@ -193,9 +193,9 @@ void BoxesHullTrajProblem::getTangentUB(RefVec out) const
   for (int i = 0; i < out.size(); i++) out(i) = infinity;
 }
 
-void BoxesHullTrajProblem::evalObj(double& out, RefVec in) const
+double BoxesHullTrajProblem::evalObj(RefVec in)
 {
-  out = 0;
+  double out = 0;
   // distance between first mobile box and initial position
   Eigen::Vector3d pos = initPos_;
   Eigen::Vector3d posNext = in.head(3);
@@ -209,7 +209,7 @@ void BoxesHullTrajProblem::evalObj(double& out, RefVec in) const
     dist = posNext - pos;
     out += dist[0] * dist[0] + dist[1] * dist[1] + dist[2] * dist[2];
   } 
-  cout << "cost" << out << endl;
+  return out;
 }
 void BoxesHullTrajProblem::evalObjDiff(RefMat out, RefVec in) const 
 {
@@ -231,6 +231,7 @@ void BoxesHullTrajProblem::evalObjDiff(RefMat out, RefVec in) const
     outRepObjDiff_.block(0, (i + 1) * boxRepDim, 1, boxRepDim) += 2 * dist.transpose();
   }
   out = outRepObjDiff_;
+  //costDiff_ = out;
 }
 
 
@@ -280,15 +281,15 @@ void BoxesHullTrajProblem::evalNonLinCstr(RefVec out, RefVec in, size_t i) const
 
     if (iBox0Above != -1 && iBox1AboveSize_t != nBoxes_)
     {
-      trans0Above = in.segment(3*i, 3);
-      trans1Above = in.segment(3*i, 3);
+      trans0Above = in.segment(3*iBox0AboveSize_t, 3);
+      trans1Above = in.segment(3*iBox1AboveSize_t, 3);
       box0AbovePlanFct = &boxAbovePlanFcts_[iBox0AboveSize_t];
       box1AbovePlanFct = &boxAbovePlanFcts_[iBox1AboveSize_t];
     }
     else if (iBox0Above == -1 && iBox1AboveSize_t != nBoxes_)
     {
       trans0Above = initPos_;
-      trans1Above = in.segment(3*i, 3);
+      trans1Above = in.segment(3*iBox1AboveSize_t, 3);
       box0AbovePlanFct = &initBoxAbovePlanFct_;
       box1AbovePlanFct = &boxAbovePlanFcts_[iBox1AboveSize_t];
     }
@@ -389,31 +390,163 @@ Index BoxesHullTrajProblem::nonLinCstrDim(size_t i) const
   else
     return 0;
 }
+void BoxesHullTrajProblem::evalNonLinCstrDiff(Eigen::SparseMatrix<double>& out, RefVec in, size_t i) const
+{
+  outRep_.setZero();
+  Eigen::Vector4d nullQuat(0, 0, 0, 1);
+  if ( i < nFixedPlanCstr_){
+    int iC = boxAboveFixedPlanFcts_[i].box().index();
+    Eigen::Vector3d trans = in.segment(iC*3, 3);
+    boxAboveFixedPlanFcts_[i].diffTrans(outRep_.block(8 * static_cast<long>(i), 3 * iC, 8, 3), trans, nullQuat);
+    out.resize(3, manifold_size);
+    out.setZero();
+    for (int i=0; i<3; i++)
+      for (int j=0; j<8; j++)
+        out.coeffRef(j, 3* iC) = outRep_.coeffRef(8 * static_cast<long>(i), 3 * iC);
+  }
+  else if (i == nFixedPlanCstr_)
+  {
+    out.resize(3, manifold_size);
+    out.setZero();
+    
+    for (int i=0; i<3; i++)
+      out.coeffRef(i, 3*(nBoxes_-1) + i) = 1.0;
+  }
+  else if (i < nMobilePlanCstr_ + 1 + nFixedPlanCstr_){
+    out.resize(24, manifold_size);
+    out.setZero();
 
+    const size_t iPlan(static_cast<size_t>(i) - nFixedPlanCstr_ - 1);
+    if(iPlan >= plans_.size())
+      throw std::out_of_range("plan index");
+    const int iBox0Above(plans_[iPlan].box0Above());
+    const int iBox1Above(plans_[iPlan].box1Above());
+    const size_t iBox0AboveSize_t(static_cast<size_t>(iBox0Above));
+    const size_t iBox1AboveSize_t(static_cast<size_t>(iBox1Above));
+    const size_t iBoxBelow(static_cast<size_t>(plans_[iPlan].boxBelow()));
+
+    Eigen::Vector3d transBelow = obstacles_[iBoxBelow].center();
+    Eigen::Vector3d normal = in.segment(4*iPlan+37, 3); //phi_x_z()(1)(iPlan)[1];
+    double d = in(4*(iPlan)+36);
+    long rowBeginLong = static_cast<long>(16 * iPlan);
+    long box0AboveBeginLong = static_cast<long>(3 * iBox0Above);
+    long box1AboveBeginLong = static_cast<long>(3 * iBox1Above);
+    long planBeginLong = static_cast<long>(3 * nBoxes_ + 4 * iPlan);
+
+    Eigen::Matrix<double, 8, 1> tmpWTF;
+
+    Eigen::Vector3d trans0Above, trans1Above;
+    const BoxAbovePlan* box0AbovePlanFct = &boxAbovePlanFcts_[iBox0AboveSize_t];
+    const BoxAbovePlan* box1AbovePlanFct = &boxAbovePlanFcts_[iBox1AboveSize_t];
+    if (iBox0Above != -1 && iBox1AboveSize_t != nBoxes_)
+    {
+      trans0Above = in.segment(3*iBox0AboveSize_t, 3);
+      trans1Above = in.segment(3*iBox1AboveSize_t, 3);
+      box0AbovePlanFct = &boxAbovePlanFcts_[iBox0AboveSize_t];
+      box1AbovePlanFct = &boxAbovePlanFcts_[iBox1AboveSize_t];
+
+      box0AbovePlanFct->diffTrans(
+          outRep_.block(rowBeginLong, box0AboveBeginLong, 8, 3), trans0Above,
+          nullQuat, d, normal);
+      box1AbovePlanFct->diffTrans(
+          outRep_.block(rowBeginLong + 8, box1AboveBeginLong, 8, 3),
+          trans1Above, nullQuat, d, normal);
+      
+      for (int i=0; i<8; i++)
+        for (int j=0; j<3; j++)
+          out.coeffRef(i+8, box1AboveBeginLong+ j) = outRep_.coeffRef(rowBeginLong + 8 + i, box1AboveBeginLong + j);
+      for (int i=0; i<8; i++)
+        for (int j=0; j<3; j++)
+          out.coeffRef(i+8, box0AboveBeginLong+ j) = outRep_.coeffRef(rowBeginLong + 8 + i, box0AboveBeginLong + j);   
+  
+    }
+    else if (iBox0Above == -1 && iBox1AboveSize_t != nBoxes_)
+    {
+      trans0Above = initPos_;
+      trans1Above = in.segment(3*iBox1AboveSize_t, 3);
+      box0AbovePlanFct = &initBoxAbovePlanFct_;
+      box1AbovePlanFct->diffTrans(
+          outRep_.block(rowBeginLong + 8, box1AboveBeginLong, 8, 3),
+          trans1Above, nullQuat, d, normal);
+      for (int i=0; i<8; i++)
+        for (int j=0; j<3; j++)
+          out.coeffRef(i+8, box1AboveBeginLong+ j) = outRep_.coeffRef(rowBeginLong + 8 + i, box1AboveBeginLong + j); 
+    }
+    else
+    {
+      std::cerr << "Box0 is initial pos and Box1 is final, there is no "
+                   "intermediary boxes..." << std::endl;
+    }
+    // Box0
+    box0AbovePlanFct->diffD(tmpWTF, trans0Above, nullQuat, d, normal);
+    outRep_.block(rowBeginLong, planBeginLong, 8, 1) = tmpWTF;
+    box0AbovePlanFct->diffNormal(
+        outRep_.block(rowBeginLong, planBeginLong + 1, 8, 3), trans0Above,
+        nullQuat, d, normal);
+
+    // Box1
+    box1AbovePlanFct->diffD(tmpWTF, trans1Above, nullQuat, d, normal);
+    outRep_.block(rowBeginLong + 8, planBeginLong, 8, 1) = tmpWTF;
+    box1AbovePlanFct->diffNormal(
+        outRep_.block(rowBeginLong + 8, planBeginLong + 1, 8, 3), trans1Above,
+        nullQuat, d, normal);
+
+    // Obstacle
+    obstacleAbovePlanFcts_[iBoxBelow].diffD(tmpWTF, transBelow, nullQuat, -d,
+                                            -normal);
+    outRep_.block(rowBeginLong + 16, planBeginLong, 8, 1) = -tmpWTF;
+
+    Eigen::Matrix<double, 8, 3> tmpDiffNormal;
+    obstacleAbovePlanFcts_[iBoxBelow].diffNormal(tmpDiffNormal, transBelow,
+                                                 nullQuat, -d, -normal);
+    outRep_.block(rowBeginLong + 16, planBeginLong + 1, 8, 3) = -tmpDiffNormal;
+    
+
+
+    for (int i=0; i<8; i++)
+      for (int j=0; j<3; j++)
+        out.coeffRef(i, planBeginLong + 1 + j) = outRep_.coeffRef(rowBeginLong + i, planBeginLong + 1 + j);
+    
+    for (int i=0; i<8; i++)
+      for (int j=0; j<3; j++)
+        out.coeffRef(i+8, j+ planBeginLong + 1) = outRep_.coeffRef(rowBeginLong + 8 + i, planBeginLong + 1 + j);
+    
+    for (int i=0; i<8; i++)
+      for (int j=0; j<1; j++)
+        out.coeffRef(i+16, planBeginLong+j) = outRep_.coeffRef(rowBeginLong + 16 + i, planBeginLong + j);
+
+    for (int i=0; i<8; i++)
+      for (int j=0; j<3; j++)
+        out.coeffRef(i+16, planBeginLong + 1+ j) = outRep_.coeffRef(rowBeginLong + 16 + i, planBeginLong + 1 + j);
+
+        
+
+
+    // for (int i=0; i < 3; i++)
+    //   for (int j=0; j<24; j++)
+    //     out.coeffRef(j, 3* iC) = outRep_.coeffRef(8 * static_cast<long>(i), 3 * iC);
+
+  }
+  else if (i < numberOfCstr()){
+    out.resize(1, manifold_size);
+    out.setZero();
+    const size_t iPlan(static_cast<size_t>(i) - nFixedPlanCstr_ - nMobilePlanCstr_ - 1);
+    Eigen::Vector3d normal = in.segment(4*iPlan+37, 3); //phi_x_z()(1)(iPlan)[1];
+    for (int i=0; i< 3; i++)
+      out.coeffRef(0, 4*iPlan+37 + i) = 2.0 * in(4*iPlan+37+i); 
+  }
+}
 std::string BoxesHullTrajProblem::getCstrName(const size_t) const
 {
   std::string str("");
   return str;
 }
-void BoxesHullTrajProblem::solveNLP(RefVec init, RefVec out) const
+void BoxesHullTrajProblem::logAllX(const std::string& folderName, RefVec res) const
 {
-   // 1. define the problem
-  // Problem nlp;
-  // nlp.AddVariableSet  (std::make_shared<ExVariables>());
-  // nlp.AddConstraintSet(std::make_shared<ExConstraint>());
-  // nlp.AddCostSet      (std::make_shared<ExCost>());
-  // nlp.PrintCurrent();
-
-  // // 2. choose solver and options
-  // IpoptSolver ipopt;
-  // ipopt.SetOption("linear_solver", "mumps");
-  // ipopt.SetOption("jacobian_approximation", "finite-difference-values");
-  // ipopt.SetOption("print_level", 5);
-  
-  // // 3 . solve
-  // ipopt.Solve(nlp);
-  // Eigen::VectorXd x = nlp.GetOptVariables()->GetValues();
-  // std::cout << x.transpose() << std::endl;  
+  std::ofstream xLogFile;
+  xLogFile.open(folderName + "xNLPLog.m");
+  xLogFile << res.transpose().format(fmt::CommaInitFmt) << std::endl;
+  xLogFile.close();
 }
 
 } /* feettrajectory */
