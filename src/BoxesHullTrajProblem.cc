@@ -271,8 +271,8 @@ void BoxesHullTrajProblem::evalNonLinCstr(RefVec out, RefVec in, size_t i) const
     const size_t iBoxBelow(static_cast<size_t>(plans_[iPlan].boxBelow()));
 
     Eigen::Vector3d transBelow = obstacles_[iBoxBelow].center();    
-    Eigen::Vector3d normal = in.segment(4*iPlan+37, 3); //phi_x_z()(1)(iPlan)[1];
-    double d = in(4*(iPlan)+36);
+    Eigen::Vector3d normal = in.segment(4*iPlan+3*nBoxes_ +1, 3); //phi_x_z()(1)(iPlan)[1];
+    double d = in(4*(iPlan)+3*nBoxes_);
     //cout << "normal" << normal.transpose() <<"\t" << d << endl;
     Eigen::Vector3d trans0Above, trans1Above;
 
@@ -305,7 +305,7 @@ void BoxesHullTrajProblem::evalNonLinCstr(RefVec out, RefVec in, size_t i) const
   }
   else if (i < numberOfCstr()){
     const size_t iPlan(static_cast<size_t>(i) - nFixedPlanCstr_ - nMobilePlanCstr_ - 1);
-    Eigen::Vector3d normal = in.segment(4*iPlan+37, 3); //phi_x_z()(1)(iPlan)[1];
+    Eigen::Vector3d normal = in.segment(4*iPlan+3*nBoxes_ +1, 3); //phi_x_z()(1)(iPlan)[1];
     out(0) = pow(normal.norm(), 2);
   }
 }
@@ -400,17 +400,17 @@ void BoxesHullTrajProblem::evalNonLinCstrDiff(Eigen::SparseMatrix<double>& out, 
     boxAboveFixedPlanFcts_[i].diffTrans(outRep_.block(8 * static_cast<long>(i), 3 * iC, 8, 3), trans, nullQuat);
     out.resize(3, manifold_size);
     out.setZero();
-    for (int i=0; i<3; i++)
+    for (int k=0; k<3; k++)
       for (int j=0; j<8; j++)
-        out.coeffRef(j, 3* iC) = outRep_.coeffRef(8 * static_cast<long>(i), 3 * iC);
+        out.coeffRef(j, 3* iC + k) = outRep_.coeffRef(8 * static_cast<long>(i) + j, 3 * iC + k);
   }
   else if (i == nFixedPlanCstr_)
   {
     out.resize(3, manifold_size);
     out.setZero();
     
-    for (int i=0; i<3; i++)
-      out.coeffRef(i, 3*(nBoxes_-1) + i) = 1.0;
+    for (int k=0; k<3; k++)
+      out.coeffRef(k, 3*(nBoxes_-1) + k) = 1.0;
   }
   else if (i < nMobilePlanCstr_ + 1 + nFixedPlanCstr_){
     out.resize(24, manifold_size);
@@ -448,16 +448,17 @@ void BoxesHullTrajProblem::evalNonLinCstrDiff(Eigen::SparseMatrix<double>& out, 
       box0AbovePlanFct->diffTrans(
           outRep_.block(rowBeginLong, box0AboveBeginLong, 8, 3), trans0Above,
           nullQuat, d, normal);
+      for (int k=0; k<8; k++)
+        for (int j=0; j<3; j++)
+          out.coeffRef(k, box0AboveBeginLong+ j) = outRep_.coeffRef(rowBeginLong + k, box0AboveBeginLong + j);   
+
       box1AbovePlanFct->diffTrans(
           outRep_.block(rowBeginLong + 8, box1AboveBeginLong, 8, 3),
           trans1Above, nullQuat, d, normal);
-      
-      for (int i=0; i<8; i++)
+      for (int k=0; k<8; k++)
         for (int j=0; j<3; j++)
-          out.coeffRef(i+8, box1AboveBeginLong+ j) = outRep_.coeffRef(rowBeginLong + 8 + i, box1AboveBeginLong + j);
-      for (int i=0; i<8; i++)
-        for (int j=0; j<3; j++)
-          out.coeffRef(i+8, box0AboveBeginLong+ j) = outRep_.coeffRef(rowBeginLong + 8 + i, box0AboveBeginLong + j);   
+          out.coeffRef(k+8, box1AboveBeginLong+ j) = outRep_.coeffRef(rowBeginLong + 8 + k, box1AboveBeginLong + j);
+
   
     }
     else if (iBox0Above == -1 && iBox1AboveSize_t != nBoxes_)
@@ -468,9 +469,9 @@ void BoxesHullTrajProblem::evalNonLinCstrDiff(Eigen::SparseMatrix<double>& out, 
       box1AbovePlanFct->diffTrans(
           outRep_.block(rowBeginLong + 8, box1AboveBeginLong, 8, 3),
           trans1Above, nullQuat, d, normal);
-      for (int i=0; i<8; i++)
+      for (int k=0; k<8; k++)
         for (int j=0; j<3; j++)
-          out.coeffRef(i+8, box1AboveBeginLong+ j) = outRep_.coeffRef(rowBeginLong + 8 + i, box1AboveBeginLong + j); 
+          out.coeffRef(k+8, box1AboveBeginLong+ j) = outRep_.coeffRef(rowBeginLong + 8 + k, box1AboveBeginLong + j); 
     }
     else
     {
@@ -483,6 +484,13 @@ void BoxesHullTrajProblem::evalNonLinCstrDiff(Eigen::SparseMatrix<double>& out, 
     box0AbovePlanFct->diffNormal(
         outRep_.block(rowBeginLong, planBeginLong + 1, 8, 3), trans0Above,
         nullQuat, d, normal);
+    
+    for (int k=0; k<8; k++)
+      out.coeffRef(k, planBeginLong) = outRep_.coeffRef(rowBeginLong + k, planBeginLong);
+
+    for (int k=0; k<8; k++)
+      for (int j=0; j<3; j++)
+       out.coeffRef(k, planBeginLong + 1 + j) = outRep_.coeffRef(rowBeginLong + k, planBeginLong + 1 + j);
 
     // Box1
     box1AbovePlanFct->diffD(tmpWTF, trans1Above, nullQuat, d, normal);
@@ -491,33 +499,31 @@ void BoxesHullTrajProblem::evalNonLinCstrDiff(Eigen::SparseMatrix<double>& out, 
         outRep_.block(rowBeginLong + 8, planBeginLong + 1, 8, 3), trans1Above,
         nullQuat, d, normal);
 
+    for (int k=0; k<8; k++)
+      out.coeffRef(k + 8, planBeginLong) = outRep_.coeffRef(rowBeginLong + k + 8, planBeginLong);
+    for (int k=0; k<8; k++)
+      for (int j=0; j<3; j++)
+        out.coeffRef(k+8, j+ planBeginLong + 1) = outRep_.coeffRef(rowBeginLong + 8 + k, planBeginLong + 1 + j);
+
     // Obstacle
     obstacleAbovePlanFcts_[iBoxBelow].diffD(tmpWTF, transBelow, nullQuat, -d,
                                             -normal);
     outRep_.block(rowBeginLong + 16, planBeginLong, 8, 1) = -tmpWTF;
+    for (int k=0; k<8; k++)
+      out.coeffRef(k + 16, planBeginLong) = outRep_.coeffRef(rowBeginLong + k + 16, planBeginLong);
 
     Eigen::Matrix<double, 8, 3> tmpDiffNormal;
     obstacleAbovePlanFcts_[iBoxBelow].diffNormal(tmpDiffNormal, transBelow,
                                                  nullQuat, -d, -normal);
     outRep_.block(rowBeginLong + 16, planBeginLong + 1, 8, 3) = -tmpDiffNormal;
-    
-
-
-    for (int i=0; i<8; i++)
-      for (int j=0; j<3; j++)
-        out.coeffRef(i, planBeginLong + 1 + j) = outRep_.coeffRef(rowBeginLong + i, planBeginLong + 1 + j);
-    
-    for (int i=0; i<8; i++)
-      for (int j=0; j<3; j++)
-        out.coeffRef(i+8, j+ planBeginLong + 1) = outRep_.coeffRef(rowBeginLong + 8 + i, planBeginLong + 1 + j);
-    
-    for (int i=0; i<8; i++)
+       
+    for (int k=0; k<8; k++)
       for (int j=0; j<1; j++)
-        out.coeffRef(i+16, planBeginLong+j) = outRep_.coeffRef(rowBeginLong + 16 + i, planBeginLong + j);
+        out.coeffRef(k+16, planBeginLong+j) = outRep_.coeffRef(rowBeginLong + 16 + k, planBeginLong + j);
 
-    for (int i=0; i<8; i++)
+    for (int k=0; k<8; k++)
       for (int j=0; j<3; j++)
-        out.coeffRef(i+16, planBeginLong + 1+ j) = outRep_.coeffRef(rowBeginLong + 16 + i, planBeginLong + 1 + j);
+        out.coeffRef(k+16, planBeginLong + 1+ j) = outRep_.coeffRef(rowBeginLong + 16 + k, planBeginLong + 1 + j);
 
         
 
@@ -531,9 +537,9 @@ void BoxesHullTrajProblem::evalNonLinCstrDiff(Eigen::SparseMatrix<double>& out, 
     out.resize(1, manifold_size);
     out.setZero();
     const size_t iPlan(static_cast<size_t>(i) - nFixedPlanCstr_ - nMobilePlanCstr_ - 1);
-    Eigen::Vector3d normal = in.segment(4*iPlan+37, 3); //phi_x_z()(1)(iPlan)[1];
+    Eigen::Vector3d normal = in.segment(4*iPlan+3*nBoxes_ +1, 3); //phi_x_z()(1)(iPlan)[1];
     for (int i=0; i< 3; i++)
-      out.coeffRef(0, 4*iPlan+37 + i) = 2.0 * in(4*iPlan+37+i); 
+      out.coeffRef(0, 4*iPlan+ 3*nBoxes_ +1 + i) = 2.0 * in(4*iPlan+3*nBoxes_ +1+i); 
   }
 }
 std::string BoxesHullTrajProblem::getCstrName(const size_t) const

@@ -86,7 +86,7 @@ int main(int argc, char* argv[])
   vars->SetInitVariable(initVec);
   VecBound vars_bound(myProb.dimVar());
   for (int i=0; i< myProb.dimVar(); i++)
-    vars_bound.at(i) = NoBound;//(-1.0, 1.0);;  
+    vars_bound.at(i) = NoBound; //Bounds(-1.0, 1.0);;  
   vars->SetBounds(vars_bound);
   
   std::shared_ptr<NLPCosts> costs(new NLPCosts(&myProb));
@@ -94,7 +94,7 @@ int main(int argc, char* argv[])
   
   using ContraintPtrVec  = std::vector<ifopt::ConstraintSet::Ptr>;
   ContraintPtrVec ConstraintsGroup;
-  for (int i=1; i<37; i++)
+  for (int i=1; i<1 + 3*nBoxes; i++)
     ConstraintsGroup.push_back(make_shared<NLPConstraints>(&myProb, i, "constset1"));
   
   
@@ -109,7 +109,8 @@ int main(int argc, char* argv[])
   //nlp.AddConstraintSet(constraints2);
 
   auto solver = std::make_shared<ifopt::IpoptSolver>();
-  solver->SetOption("tol", 0.0000001);
+  solver->SetOption("tol", 0.00001);
+  solver->SetOption("max_cpu_time", 120.0);
   //solver->SetOption("jacobian_approximation", "finite-difference-values");
   solver->SetOption("linear_solver", "ma27");
   solver->SetOption("jacobian_approximation", "exact");
@@ -117,6 +118,7 @@ int main(int argc, char* argv[])
   solver->Solve(nlp);
   Eigen::VectorXd x = nlp.GetOptVariables()->GetValues();
   std::cout << "sol" << x.head(36).transpose() << std::endl;  
+  std::cout << "init" << initVec.head(36).transpose() << std::endl;
   myProb.logAllX("/home/skim/foot_data/", x);
   //std::cout << "ini" << initVec.head(36).transpose() << std::endl;
 //  std::cout << "init_step" << myProb.initPos().transpose() << std:: endl;
